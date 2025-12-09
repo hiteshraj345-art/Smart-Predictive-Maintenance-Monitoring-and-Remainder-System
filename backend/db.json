@@ -1,0 +1,46 @@
+{
+  "machines": [
+    {
+      "id": "mivqcaj8y08qxk",
+      "name": "CNC",
+      "code": "m-hp-02",
+      "location": "Deck-1",
+      "nextMaintenanceDate": "2025-12-07",
+      "responsibleEmail": "hiteshraj345@gmail.com",
+      "thresholds": {
+        "temperature": 80,
+        "vibration": 10,
+        "pressure": 200
+      },
+      "lastMaintenanceReminderSent": "2025-12-07T12:59:56.321Z",
+      "lastAbnormalAlertSent": null,
+      "createdAt": "2025-12-07T12:59:47.156Z"
+    },
+    {
+      "id": "mivqs62gpw23py",
+      "name": "CNC",
+      "code": "M-HP-02",
+      "location": "Deck-1",
+      "nextMaintenanceDate": "2025-12-07",
+      "responsibleEmail": "ganithaa5@gmail.com",
+      "thresholds": {
+        "temperature": 80,
+        "vibration": 10,
+        "pressure": 200
+      },
+      "lastMaintenanceReminderSent": "2025-12-07T13:12:22.670Z",
+      "lastAbnormalAlertSent": null,
+      "createdAt": "2025-12-07T13:12:07.864Z"
+    }
+  ],
+  "vitals": [
+    {
+      "id": "mix0a7iai08uo1",
+      "machineId": "mivqcaj8y08qxk",
+      "temperature": 70.2,
+      "vibration": 6.2,
+      "pressure": 163.3,
+      "timestamp": "2025-12-08T10:25:52.258Z"
+    }
+  ]
+}

@@ -1,0 +1,13 @@
+{
+  "name": "maintenance-monitor-system-root",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "start": "concurrently \"npm run start-backend\" \"npm run start-client\"",
+    "start-backend": "npm --prefix backend start",
+    "start-client": "npm --prefix client start"
+  },
+  "dependencies": {
+    "concurrently": "^9.2.1"
+  }
+}
