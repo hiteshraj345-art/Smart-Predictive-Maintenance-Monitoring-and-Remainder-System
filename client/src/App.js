@@ -1,463 +1,322 @@
 import React, { useEffect, useState } from 'react';
-    import axios from 'axios';
-    import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend, CartesianGrid } from 'recharts';
-    import { FiCpu, FiAlertTriangle, FiCheckCircle, FiClock, FiPlus, FiTrash2, FiMail } from 'react-icons/fi';
-    import './App.css';
+import axios from 'axios';
+import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend, CartesianGrid } from 'recharts';
+import { FiCpu, FiAlertTriangle, FiCheckCircle, FiClock, FiPlus, FiTrash2, FiMail } from 'react-icons/fi';
+import './App.css';
 
-    const api = axios.create({
-      baseURL: '/api'
-    });
+// Using local state instead of API for demo if API fails
+const api = axios.create({
+  baseURL: 'http://localhost:5000/api'
+});
 
-    function statusForMachine(machine) {
-      if (!machine.nextMaintenanceDate) return { label: 'Unknown', color: '#6b7280' };
-      const due = new Date(machine.nextMaintenanceDate);
-      const now = new Date();
-      const diffDays = (due - now) / (1000 * 60 * 60 * 24);
+function statusForMachine(machine) {
+  if (!machine.nextMaintenanceDate) return { label: 'Unknown', color: '#6b7280' };
+  const due = new Date(machine.nextMaintenanceDate);
+  const now = new Date();
+  const diffDays = (due - now) / (1000 * 60 * 60 * 24);
 
-      if (diffDays < 0) return { label: 'Overdue', color: '#ef4444' };
-      if (diffDays <= 3) return { label: 'Due soon', color: '#f97316' };
-      if (diffDays <= 7) return { label: 'Planned', color: '#eab308' };
-      return { label: 'OK', color: '#22c55e' };
+  if (diffDays < 0) return { label: 'Overdue', color: '#ef4444' };
+  if (diffDays <= 3) return { label: 'Due soon', color: '#f97316' };
+  if (diffDays <= 7) return { label: 'Planned', color: '#eab308' };
+  return { label: 'OK', color: '#22c55e' };
+}
+
+function App() {
+  const [machines, setMachines] = useState([]);
+  const [selectedId, setSelectedId] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [form, setForm] = useState({
+    name: '',
+    code: '',
+    location: '',
+    responsibleEmail: '',
+    nextMaintenanceDate: '',
+    thresholds: {
+      temperature: 80,
+      vibration: 10,
+      pressure: 200
     }
+  });
 
-    function App() {
-      const [machines, setMachines] = useState([]);
-      const [selectedId, setSelectedId] = useState(null);
-      const [loading, setLoading] = useState(false);
-      const [saving, setSaving] = useState(false);
-      const [form, setForm] = useState({
-        name: '',
-        code: '',
-        location: '',
-        nextMaintenanceDate: '',
-        responsibleEmail: '',
-        thresholds: {
-          temperature: 80,
-          vibration: 10,
-          pressure: 200
-        }
+  useEffect(() => {
+    fetchMachines();
+  }, []);
+
+  const fetchMachines = async () => {
+    try {
+      const response = await api.get('/machines');
+      setMachines(response.data);
+    } catch (error) {
+      console.error('Failed to fetch machines:', error);
+      // Fallback for GitHub Pages demo
+      const localData = localStorage.getItem('demo_machines');
+      if (localData) setMachines(JSON.parse(localData));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleAdd = async (e) => {
+    e.preventDefault();
+    setSaving(true);
+    try {
+      const response = await api.post('/machines', form);
+      const newMachines = [...machines, response.data];
+      setMachines(newMachines);
+      localStorage.setItem('demo_machines', JSON.stringify(newMachines));
+      setForm({
+        name: '', code: '', location: '', responsibleEmail: '',
+        nextMaintenanceDate: '', thresholds: { temperature: 80, vibration: 10, pressure: 200 }
       });
-      const [vitals, setVitals] = useState([]);
-      const [vitalsLoading, setVitalsLoading] = useState(false);
-      const [message, setMessage] = useState(null);
+    } catch (error) {
+      // Fallback for GitHub Pages demo
+      const newMachine = { ...form, _id: Date.now().toString(), vitals: [] };
+      const updated = [...machines, newMachine];
+      setMachines(updated);
+      localStorage.setItem('demo_machines', JSON.stringify(updated));
+    } finally {
+      setSaving(false);
+    }
+  };
 
-      const selectedMachine = machines.find(m => m.id === selectedId) || null;
+  const handleDelete = async (id) => {
+    try {
+      await api.delete(`/machines/${id}`);
+      const updated = machines.filter(m => m._id !== id);
+      setMachines(updated);
+      localStorage.setItem('demo_machines', JSON.stringify(updated));
+    } catch (error) {
+      const updated = machines.filter(m => m._id !== id);
+      setMachines(updated);
+      localStorage.setItem('demo_machines', JSON.stringify(updated));
+    }
+  };
 
-      useEffect(() => {
-        loadMachines();
-      }, []);
+  const selectedMachine = machines.find(m => m._id === selectedId);
 
-      useEffect(() => {
-        if (selectedId) {
-          loadVitals(selectedId);
-        } else {
-          setVitals([]);
-        }
-      }, [selectedId]);
+  return (
+    <div className="app-container">
+      <header className="header">
+        <div className="logo">
+          <FiCpu className="logo-icon" />
+          <div>
+            <h1>Smart Maintenance Monitor</h1>
+            <p>Live machine vitals • Maintenance scheduling • Email alerts</p>
+          </div>
+        </div>
+        <div className="status-badge">
+          <span className="dot"></span>
+          Backend connection: Local Storage Mode (Demo)
+        </div>
+      </header>
 
-      async function loadMachines() {
-        setLoading(true);
-        try {
-          const res = await api.get('/machines');
-          setMachines(res.data);
-          if (res.data.length && !selectedId) {
-            setSelectedId(res.data[0].id);
-          }
-        } catch (err) {
-          console.error(err);
-          setMessage({ type: 'error', text: 'Failed to load machines' });
-        } finally {
-          setLoading(false);
-        }
-      }
-
-      async function loadVitals(id) {
-        setVitalsLoading(true);
-        try {
-          const res = await api.get(`/machines/${id}/vitals`, { params: { limit: 50 } });
-          setVitals(res.data);
-        } catch (err) {
-          console.error(err);
-          setMessage({ type: 'error', text: 'Failed to load live vitals' });
-        } finally {
-          setVitalsLoading(false);
-        }
-      }
-
-      function handleFormChange(e) {
-        const { name, value } = e.target;
-        if (name.startsWith('thresholds.')) {
-          const key = name.split('.')[1];
-          setForm(prev => ({
-            ...prev,
-            thresholds: {
-              ...prev.thresholds,
-              [key]: Number(value)
-            }
-          }));
-        } else {
-          setForm(prev => ({
-            ...prev,
-            [name]: value
-          }));
-        }
-      }
-
-      async function handleCreateMachine(e) {
-        e.preventDefault();
-        setSaving(true);
-        try {
-          const res = await api.post('/machines', form);
-          setMachines(prev => [...prev, res.data]);
-          setForm({
-            name: '',
-            code: '',
-            location: '',
-            nextMaintenanceDate: '',
-            responsibleEmail: '',
-            thresholds: {
-              temperature: 80,
-              vibration: 10,
-              pressure: 200
-            }
-          });
-          setMessage({ type: 'success', text: 'Machine added' });
-          if (!selectedId) setSelectedId(res.data.id);
-        } catch (err) {
-          console.error(err);
-          setMessage({ type: 'error', text: err.response?.data?.message || 'Failed to add machine' });
-        } finally {
-          setSaving(false);
-        }
-      }
-
-      async function handleDeleteMachine(id) {
-        if (!window.confirm('Delete this machine and all its vitals?')) return;
-        try {
-          await api.delete(`/machines/${id}`);
-          setMachines(prev => prev.filter(m => m.id !== id));
-          if (selectedId === id) setSelectedId(null);
-          setMessage({ type: 'success', text: 'Machine deleted' });
-        } catch (err) {
-          console.error(err);
-          setMessage({ type: 'error', text: 'Failed to delete machine' });
-        }
-      }
-
-      async function handleSimulateVital() {
-        if (!selectedMachine) return;
-        try {
-          const res = await api.post(`/machines/${selectedMachine.id}/vitals/simulate`);
-          setVitals(prev => [...prev, res.data].slice(-50));
-          setMessage({ type: 'success', text: 'Simulated vital reading added' });
-        } catch (err) {
-          console.error(err);
-          setMessage({ type: 'error', text: 'Failed to simulate vital reading' });
-        }
-      }
-
-      function closeMessage() {
-        setMessage(null);
-      }
-
-      return (
-        <div className="app-shell">
-          <header className="app-header">
-            <div className="title-row">
-              <div className="logo-circle">
-                <FiCpu size={20} />
-              </div>
-              <div>
-                <h1>Smart Maintenance Monitor</h1>
-                <p>Live machine vitals • Maintenance scheduling • Email alerts</p>
-              </div>
+      <main className="dashboard">
+        <aside className="sidebar">
+          <section className="card list-section">
+            <div className="card-header">
+              <h2>Machines</h2>
+              <span className="count">{machines.length}</span>
             </div>
-            <div className="header-status">
-              <span className="status-dot" />
-              <span>Backend expected on http://localhost:5000</span>
-            </div>
-          </header>
-
-          {message && (
-            <div className={`toast toast-${message.type}`} onClick={closeMessage}>
-              {message.type === 'error' ? <FiAlertTriangle /> : <FiCheckCircle />}
-              <span>{message.text}</span>
-            </div>
-          )}
-
-          <main className="app-main">
-            <section className="left-panel">
-              <div className="card">
-                <div className="card-header">
-                  <h2>Machines</h2>
-                  <span className="badge">{machines.length}</span>
-                </div>
-                {loading ? (
-                  <div className="empty">Loading machines…</div>
-                ) : machines.length === 0 ? (
-                  <div className="empty">
-                    <p>No machines yet.</p>
-                    <p>Add your first machine using the form below.</p>
-                  </div>
-                ) : (
-                  <ul className="machine-list">
-                    {machines.map(machine => {
-                      const status = statusForMachine(machine);
-                      const isSelected = machine.id === selectedId;
-                      return (
-                        <li
-                          key={machine.id}
-                          className={`machine-item ${isSelected ? 'selected' : ''}`}
-                          onClick={() => setSelectedId(machine.id)}
-                        >
-                          <div className="machine-main">
-                            <div className="machine-name-row">
-                              <span className="machine-name">{machine.name}</span>
-                              {machine.code && <span className="machine-code">#{machine.code}</span>}
-                            </div>
-                            <div className="machine-meta">
-                              {machine.location && <span>{machine.location}</span>}
-                              <span className="pill" style={{ backgroundColor: status.color + '33', color: status.color }}>
-                                {status.label}
-                              </span>
-                            </div>
-                          </div>
-                          <button
-                            className="icon-button delete"
-                            onClick={e => {
-                              e.stopPropagation();
-                              handleDeleteMachine(machine.id);
-                            }}
-                          >
-                            <FiTrash2 size={16} />
-                          </button>
-                        </li>
-                      );
-                    })}
-                  </ul>
-                )}
-              </div>
-
-              <div className="card">
-                <div className="card-header">
-                  <h2>Add Machine</h2>
-                </div>
-                <form className="form-grid" onSubmit={handleCreateMachine}>
-                  <label>
-                    Name*
-                    <input
-                      name="name"
-                      value={form.name}
-                      onChange={handleFormChange}
-                      placeholder="Press #2 Hydraulic Press"
-                      required
-                    />
-                  </label>
-                  <label>
-                    Code / Tag
-                    <input
-                      name="code"
-                      value={form.code}
-                      onChange={handleFormChange}
-                      placeholder="M-HP-02"
-                    />
-                  </label>
-                  <label>
-                    Location
-                    <input
-                      name="location"
-                      value={form.location}
-                      onChange={handleFormChange}
-                      placeholder="Shop Floor A"
-                    />
-                  </label>
-                  <label>
-                    Responsible email
-                    <input
-                      type="email"
-                      name="responsibleEmail"
-                      value={form.responsibleEmail}
-                      onChange={handleFormChange}
-                      placeholder="maintenance@example.com"
-                    />
-                  </label>
-                  <label>
-                    Next maintenance date*
-                    <input
-                      type="date"
-                      name="nextMaintenanceDate"
-                      value={form.nextMaintenanceDate}
-                      onChange={handleFormChange}
-                      required
-                    />
-                  </label>
-
-                  <div className="thresholds">
-                    <div className="thresholds-header">
-                      <FiAlertTriangle size={14} />
-                      <span>Alert thresholds</span>
-                    </div>
-                    <div className="threshold-row">
-                      <label>
-                        Max temperature (°C)
-                        <input
-                          type="number"
-                          name="thresholds.temperature"
-                          value={form.thresholds.temperature}
-                          onChange={handleFormChange}
-                        />
-                      </label>
-                      <label>
-                        Max vibration (mm/s)
-                        <input
-                          type="number"
-                          name="thresholds.vibration"
-                          value={form.thresholds.vibration}
-                          onChange={handleFormChange}
-                        />
-                      </label>
-                      <label>
-                        Max pressure (bar)
-                        <input
-                          type="number"
-                          name="thresholds.pressure"
-                          value={form.thresholds.pressure}
-                          onChange={handleFormChange}
-                        />
-                      </label>
-                    </div>
-                  </div>
-
-                  <button className="primary-button" type="submit" disabled={saving}>
-                    <FiPlus />
-                    <span>{saving ? 'Saving…' : 'Add machine'}</span>
-                  </button>
-                </form>
-              </div>
-            </section>
-
-            <section className="right-panel">
-              {!selectedMachine ? (
-                <div className="card empty-card">
-                  <p>Select a machine to view its live vitals, trends and maintenance info.</p>
+            <div className="machine-list">
+              {machines.length === 0 ? (
+                <div className="empty-state">
+                  <p>No machines yet.</p>
+                  <p className="subtext">Add your first machine using the form below.</p>
                 </div>
               ) : (
-                <>
-                  <div className="card">
-                    <div className="card-header">
-                      <h2>Machine overview</h2>
-                    </div>
-                    <div className="machine-overview">
-                      <div>
-                        <h3>{selectedMachine.name}</h3>
-                        <p className="muted">
-                          {selectedMachine.code && <span>Tag: {selectedMachine.code} • </span>}
-                          {selectedMachine.location || 'No location set'}
-                        </p>
-                        <p className="muted">
-                          <FiClock /> Next maintenance:{' '}
-                          {selectedMachine.nextMaintenanceDate
-                            ? new Date(selectedMachine.nextMaintenanceDate).toLocaleDateString()
-                            : 'Not set'}
-                        </p>
-                        {selectedMachine.responsibleEmail && (
-                          <p className="muted">
-                            <FiMail /> Alerts to: {selectedMachine.responsibleEmail} (plus global ALERT_EMAIL_TO)
-                          </p>
-                        )}
+                machines.map(m => {
+                  const status = statusForMachine(m);
+                  return (
+                    <div 
+                      key={m._id} 
+                      className={`machine-item ${selectedId === m._id ? 'active' : ''}`}
+                      onClick={() => setSelectedId(m._id)}
+                    >
+                      <div className="item-info">
+                        <h3>{m.name}</h3>
+                        <code>{m.code}</code>
                       </div>
-                      <div className="threshold-summary">
-                        <p>Alert thresholds</p>
-                        <ul>
-                          <li>Temp ≤ {selectedMachine.thresholds?.temperature ?? 80} °C</li>
-                          <li>Vibration ≤ {selectedMachine.thresholds?.vibration ?? 10} mm/s</li>
-                          <li>Pressure ≤ {selectedMachine.thresholds?.pressure ?? 200} bar</li>
-                        </ul>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="card">
-                    <div className="card-header">
-                      <h2>Live vitals</h2>
-                      <div className="card-actions">
-                        <button className="ghost-button" onClick={() => loadVitals(selectedMachine.id)} disabled={vitalsLoading}>
-                          Refresh
-                        </button>
-                        <button className="ghost-button" onClick={handleSimulateVital}>
-                          Simulate reading
+                      <div className="item-meta">
+                        <span className="status-pill" style={{ backgroundColor: status.color }}>
+                          {status.label}
+                        </span>
+                        <button 
+                          className="btn-icon delete" 
+                          onClick={(e) => { e.stopPropagation(); handleDelete(m._id); }}
+                        >
+                          <FiTrash2 />
                         </button>
                       </div>
                     </div>
-                    {vitalsLoading ? (
-                      <div className="empty">Loading vitals…</div>
-                    ) : vitals.length === 0 ? (
-                      <div className="empty">
-                        <p>No vitals yet.</p>
-                        <p>
-                          Send HTTP POST from your sensor to:
-                          <code>/api/machines/{selectedMachine.id}/vitals</code>
-                          or use the <strong>Simulate reading</strong> button.
-                        </p>
-                      </div>
-                    ) : (
-                      <div className="chart-wrapper">
-                        <ResponsiveContainer width="100%" height={260}>
-                          <LineChart data={vitals}>
-                            <CartesianGrid strokeDasharray="3 3" opacity={0.2} />
-                            <XAxis
-                              dataKey="timestamp"
-                              tickFormatter={t => new Date(t).toLocaleTimeString()}
-                              minTickGap={30}
-                            />
-                            <YAxis />
-                            <Tooltip
-                              labelFormatter={t => new Date(t).toLocaleString()}
-                            />
-                            <Legend />
-                            <Line type="monotone" dataKey="temperature" name="Temp (°C)" dot={false} />
-                            <Line type="monotone" dataKey="vibration" name="Vibration (mm/s)" dot={false} />
-                            <Line type="monotone" dataKey="pressure" name="Pressure (bar)" dot={false} />
-                          </LineChart>
-                        </ResponsiveContainer>
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="card">
-                    <div className="card-header">
-                      <h2>How to connect sensors</h2>
-                    </div>
-                    <div className="sensor-instructions">
-                      <ol>
-                        <li>
-                          Ensure the backend is reachable from your sensor device at{' '}
-                          <code>http://&lt;server-ip&gt;:5000</code>.
-                        </li>
-                        <li>
-                          From your PLC / gateway / edge device, send an HTTP <code>POST</code> to:
-                          <code>/api/machines/{selectedMachine.id}/vitals</code>
-                          with JSON body:
-                          <pre>{`{
-  "temperature": 72.5,
-  "vibration": 4.2,
-  "pressure": 150.0,
-  "timestamp": "2025-12-07T18:30:00.000Z"
-}`}</pre>
-                        </li>
-                        <li>
-                          Configure <code>.env</code> in the backend with SMTP credentials so that email alerts are
-                          triggered when readings cross thresholds or maintenance is due soon.
-                        </li>
-                      </ol>
-                    </div>
-                  </div>
-                </>
+                  );
+                })
               )}
-            </section>
-          </main>
-        </div>
-      );
-    }
+            </div>
+          </section>
 
-    export default App;
+          <section className="card form-section">
+            <h3>Add Machine</h3>
+            <form onSubmit={handleAdd}>
+              <div className="form-row">
+                <div className="field">
+                  <label>Name*</label>
+                  <input 
+                    required 
+                    placeholder="Press #2 Hydraulic Press"
+                    value={form.name}
+                    onChange={e => setForm({...form, name: e.target.value})}
+                  />
+                </div>
+                <div className="field">
+                  <label>Code / Tag</label>
+                  <input 
+                    placeholder="M-HP-02"
+                    value={form.code}
+                    onChange={e => setForm({...form, code: e.target.value})}
+                  />
+                </div>
+              </div>
+
+              <div className="form-row">
+                <div className="field">
+                  <label>Location</label>
+                  <input 
+                    placeholder="Shop Floor A"
+                    value={form.location}
+                    onChange={e => setForm({...form, location: e.target.value})}
+                  />
+                </div>
+                <div className="field">
+                  <label>Responsible email</label>
+                  <input 
+                    type="email"
+                    placeholder="maintenance@example.com"
+                    value={form.responsibleEmail}
+                    onChange={e => setForm({...form, responsibleEmail: e.target.value})}
+                  />
+                </div>
+              </div>
+
+              <div className="field">
+                <label>Next maintenance date*</label>
+                <input 
+                  type="date"
+                  required
+                  value={form.nextMaintenanceDate}
+                  onChange={e => setForm({...form, nextMaintenanceDate: e.target.value})}
+                />
+              </div>
+
+              <div className="thresholds">
+                <p><FiAlertTriangle /> Alert thresholds</p>
+                <div className="t-grid">
+                  <div className="field">
+                    <label>Max temperature (°C)</label>
+                    <input 
+                      type="number"
+                      value={form.thresholds.temperature}
+                      onChange={e => setForm({...form, thresholds: {...form.thresholds, temperature: e.target.value}})}
+                    />
+                  </div>
+                  <div className="field">
+                    <label>Max vibration (mm/s)</label>
+                    <input 
+                      type="number"
+                      value={form.thresholds.vibration}
+                      onChange={e => setForm({...form, thresholds: {...form.thresholds, vibration: e.target.value}})}
+                    />
+                  </div>
+                  <div className="field">
+                    <label>Max pressure (bar)</label>
+                    <input 
+                      type="number"
+                      value={form.thresholds.pressure}
+                      onChange={e => setForm({...form, thresholds: {...form.thresholds, pressure: e.target.value}})}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <button type="submit" className="btn-primary" disabled={saving}>
+                <FiPlus /> {saving ? 'Adding...' : 'Add machine'}
+              </button>
+            </form>
+          </section>
+        </aside>
+
+        <section className="detail-view">
+          {selectedMachine ? (
+            <div className="detail-content">
+              <div className="detail-header">
+                <div>
+                  <h2>{selectedMachine.name}</h2>
+                  <p className="meta">{selectedMachine.code} • {selectedMachine.location}</p>
+                </div>
+                <div className="maintenance-info">
+                  <FiClock /> Next: {new Date(selectedMachine.nextMaintenanceDate).toLocaleDateString()}
+                </div>
+              </div>
+
+              <div className="stats-grid">
+                <div className="stat-card">
+                  <label>Temperature</label>
+                  <div className="value">
+                    {selectedMachine.vitals?.[selectedMachine.vitals.length-1]?.temperature || '--'}
+                    <span>°C</span>
+                  </div>
+                </div>
+                <div className="stat-card">
+                  <label>Vibration</label>
+                  <div className="value">
+                    {selectedMachine.vitals?.[selectedMachine.vitals.length-1]?.vibration || '--'}
+                    <span>mm/s</span>
+                  </div>
+                </div>
+                <div className="stat-card">
+                  <label>Pressure</label>
+                  <div className="value">
+                    {selectedMachine.vitals?.[selectedMachine.vitals.length-1]?.pressure || '--'}
+                    <span>bar</span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="chart-card card">
+                <h3>Vital Trends (Last 10 readings)</h3>
+                <div className="chart-container">
+                  <ResponsiveContainer width="100%" height={300}>
+                    <LineChart data={selectedMachine.vitals?.slice(-10)}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
+                      <XAxis 
+                        dataKey="timestamp" 
+                        stroke="#9ca3af" 
+                        tickFormatter={(t) => new Date(t).toLocaleTimeString()}
+                      />
+                      <YAxis stroke="#9ca3af" />
+                      <Tooltip 
+                        contentStyle={{ backgroundColor: '#1f2937', borderColor: '#374151' }}
+                        itemStyle={{ color: '#fff' }}
+                      />
+                      <Legend />
+                      <Line type="monotone" dataKey="temperature" stroke="#ef4444" name="Temp (°C)" dot={false} strokeWidth={2} />
+                      <Line type="monotone" dataKey="vibration" stroke="#3b82f6" name="Vib (mm/s)" dot={false} strokeWidth={2} />
+                      <Line type="monotone" dataKey="pressure" stroke="#10b981" name="Press (bar)" dot={false} strokeWidth={2} />
+                    </LineChart>
+                  </ResponsiveContainer>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="detail-placeholder">
+              <FiCpu className="bg-icon" />
+              <p>Select a machine to view its live vitals, trends and maintenance info.</p>
+            </div>
+          )}
+        </section>
+      </main>
+    </div>
+  );
+}
+
+export default App;
